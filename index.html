@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Child Safety Robot System</title>
+
+<script src="https://cdn.jsdelivr.net/npm/nipplejs@0.10.1/dist/nipplejs.min.js"></script>
+
+<style>
+:root {
+    --primary: #2563eb;
+    --danger: #dc2626;
+    --warning: #f59e0b;
+    --success: #16a34a;
+    --bg: #0f172a;
+    --card: #1e293b;
+    --text: #f1f5f9;
+}
+
+body {
+    margin: 0;
+    font-family: 'Segoe UI', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+}
+
+h1 {
+    text-align: center;
+    padding: 20px;
+    margin: 0;
+}
+
+.dashboard {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: 20px;
+    padding: 20px;
+}
+
+/* VIDEO */
+.video-card {
+    background: var(--card);
+    border-radius: 15px;
+    overflow: hidden;
+    box-shadow: 0 10px 25px rgba(0,0,0,0.4);
+}
+
+.video-card img {
+    width: 100%;
+}
+
+/* SIDE PANEL */
+.side-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.card {
+    background: var(--card);
+    padding: 15px;
+    border-radius: 15px;
+    box-shadow: 0 6px 15px rgba(0,0,0,0.3);
+}
+
+.card h3 {
+    margin-top: 0;
+}
+
+/* STATUS */
+#risk-indicator {
+    text-align: center;
+    font-size: 1.5em;
+    padding: 20px;
+    border-radius: 12px;
+    margin-bottom: 10px;
+    font-weight: bold;
+}
+
+.safe { background: var(--success); }
+.warning { background: var(--warning); color: black; }
+.critical { background: var(--danger); animation: blink 1s infinite; }
+
+@keyframes blink { 50% { opacity: 0.6; } }
+
+/* BUTTON GRID */
+.button-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+    text-align: center;
+}
+
+.button-grid button {
+    padding: 12px;
+    border: none;
+    border-radius: 10px;
+    font-weight: bold;
+    cursor: pointer;
+    background: var(--primary);
+    color: white;
+    transition: 0.2s;
+}
+
+.button-grid button:hover {
+    transform: scale(1.05);
+}
+
+.stop-btn {
+    background: var(--danger) !important;
+}
+
+/* SERVO SLIDER */
+.slider-container {
+    margin-top: 10px;
+}
+
+input[type=range] {
+    width: 100%;
+    accent-color: #22d3ee;
+}
+
+/* JOYSTICK */
+.joystick-wrapper {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 240px;
+}
+
+#joystick-zone {
+    width: 200px;
+    height: 200px;
+    position: relative;
+}
+
+/* ROBOT MAP */
+#robot-map {
+    width: 250px;
+    height: 250px;
+    margin: auto;
+    background: #0f172a;
+    border-radius: 15px;
+    border: 2px solid #334155;
+    position: relative;
+}
+
+#robot-dot {
+    width: 18px;
+    height: 18px;
+    background: #22d3ee;
+    border-radius: 50%;
+    position: absolute;
+    top: 116px;
+    left: 116px;
+    transition: 0.2s;
+}
+</style>
+</head>
+
+<body>
+
+<h1>🤖 AI Child Safety & Robot Control Center</h1>
+
+<div class="dashboard">
+
+    <div class="video-card">
+        <img src="{{ url_for('video_feed') }}">
+    </div>
+
+    <div class="side-panel">
+
+        <!-- STATUS -->
+        <div class="card">
+            <div id="risk-indicator" class="safe">SAFE</div>
+            Risk: <strong id="risk-score">0%</strong><br>
+            Updated: <strong id="last-update">--</strong>
+        </div>
+
+        <!-- MANUAL CONTROL -->
+        <div class="card">
+            <h3>Manual Control</h3>
+            <div class="button-grid">
+                <div></div>
+                <button onclick="move('forward')">▲Forward</button>
+                <div></div>
+
+                <button onclick="move('left')">◀Left</button>
+                <button class="stop-btn" onclick="move('stop')">■Stop</button>
+                <button onclick="move('right')">▶Right</button>
+
+                <div></div>
+                <button onclick="move('backward')">▼Backward</button>
+                <div></div>
+            </div>
+        </div>
+
+        <!-- SERVO CONTROL -->
+        <div class="card">
+            <h3>🎥 Camera Servo Control</h3>
+            <div class="slider-container">
+                <input type="range" min="0" max="180" value="90"
+                       onchange="setServo(this.value)">
+                <div style="text-align:center; margin-top:8px;">
+                    Angle: <strong><span id="servoVal">90</span>°</strong>
+                </div>
+            </div>
+        </div>
+
+        <!-- JOYSTICK -->
+        <div class="card">
+            <h3>Virtual Joystick</h3>
+            <div class="joystick-wrapper">
+                <div id="joystick-zone"></div>
+            </div>
+        </div>
+
+        <!-- ROBOT MAP -->
+        <div class="card">
+            <h3>Robot Position</h3>
+            <div id="robot-map">
+                <div id="robot-dot"></div>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<script>
+// SERVO
+function setServo(angle){
+    document.getElementById("servoVal").innerText = angle;
+    fetch('/servo?angle=' + angle);
+}
+
+// JOYSTICK
+let joystick = nipplejs.create({
+    zone: document.getElementById('joystick-zone'),
+    mode: 'static',
+    position: { left: '100px', top: '100px' },
+    size: 150,
+    color: 'white'
+});
+
+let moveInterval = null;
+
+joystick.on('move', function (evt, data) {
+    if (!data.direction) return;
+
+    let direction = data.direction.angle;
+
+    if (moveInterval) clearInterval(moveInterval);
+
+    moveInterval = setInterval(() => {
+        if (direction === 'up') move('forward');
+        if (direction === 'down') move('backward');
+        if (direction === 'left') move('left');
+        if (direction === 'right') move('right');
+    }, 200);
+});
+
+joystick.on('end', function () {
+    if (moveInterval) clearInterval(moveInterval);
+    move('stop');
+});
+
+// ROBOT POSITION
+let posX = 116;
+let posY = 116;
+const step = 5;
+
+function updateRobotPosition(direction) {
+    if (direction === 'forward') posY -= step;
+    if (direction === 'backward') posY += step;
+    if (direction === 'left') posX -= step;
+    if (direction === 'right') posX += step;
+
+    posX = Math.max(0, Math.min(232, posX));
+    posY = Math.max(0, Math.min(232, posY));
+
+    document.getElementById("robot-dot").style.left = posX + "px";
+    document.getElementById("robot-dot").style.top = posY + "px";
+}
+
+function move(dir){
+    fetch('/' + dir);
+    updateRobotPosition(dir);
+}
+</script>
+
+</body>
+</html>
